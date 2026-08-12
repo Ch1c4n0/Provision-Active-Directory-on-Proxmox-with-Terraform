@@ -1,0 +1,27 @@
+# Copie este arquivo para terraform.tfvars e preencha com seus valores reais.
+# NUNCA versione o terraform.tfvars com segredos reais.
+
+proxmox_endpoint  = "https://192.168.200.107:8006/"
+proxmox_api_token = "root@pam!terraform=00000000-0000-0000-0000-000000000000"
+proxmox_insecure  = true
+
+target_node   = "pve"
+template_name = "temp-ws2022-cloudbaseinit-v2"
+vm_id         = 5010
+vm_name       = "ad-dc01"
+
+bridge_network    = "vmbr0"
+bridge_cidr_range = "192.168.200.0/24"
+ad_network_host   = 10
+
+# SSH (necessário só para o upload do script via snippets - veja o README)
+ssh_username         = "root"
+ssh_agent            = false
+ssh_private_key_path = "C:/Users/SEU_USUARIO/.ssh/proxmox_terraform"
+
+domain_name                       = "aromaforhealth.corp"
+dc_name                           = "ntdc01"
+domain_netbios_name               = "aromaforhealth"
+vm_admin_username                 = "vmadmin"
+domain_admin_password             = "ChangeMe123&%"
+safe_mode_administrator_password  = "ChangeMe123&%"

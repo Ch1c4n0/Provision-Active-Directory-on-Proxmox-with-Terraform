@@ -2,7 +2,7 @@
 
 ### 🌐 Elige tu idioma / Choose your language / Escolha o idioma
 
-[🇧🇷 Português](README.md) &nbsp;|&nbsp; [🇺🇸 English](README.en.md) &nbsp;|&nbsp; [🇪🇸 **Español**](README.es.md)
+[�🇸 English](README.md) &nbsp;|&nbsp; [🇧🇷 Português](README.pt.md) &nbsp;|&nbsp; [🇪🇸 **Español**](README.es.md)
 
 </div>
 
@@ -602,6 +602,6 @@ terraform destroy -auto-approve
 
 **Autor:** Marcelo Goncalves
 
-[🇧🇷 Português](README.md) &nbsp;|&nbsp; [🇺🇸 English](README.en.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
+[�🇸 English](README.md) &nbsp;|&nbsp; [🇧🇷 Português](README.pt.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
 
 </div>

@@ -1,8 +1,8 @@
 <div align="center">
 
-### 🌐 Escolha o idioma / Choose your language / Elige tu idioma
+### 🌐 Choose your language / Escolha o idioma / Elige tu idioma
 
-[🇧🇷 **Português**](README.md) &nbsp;|&nbsp; [🇺🇸 English](README.en.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
+[�🇸 **English**](README.md) &nbsp;|&nbsp; [🇧🇷 Português](README.pt.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
 
 </div>
 
@@ -12,106 +12,106 @@
 ![Proxmox](https://img.shields.io/badge/Proxmox%20VE-E57000?style=for-the-badge&logo=proxmox&logoColor=white)
 ![Microsoft](https://img.shields.io/badge/Windows%20Server-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 
-# Active Directory automatizado no Proxmox com Terraform
+# Automated Active Directory on Proxmox with Terraform
 
 </div>
 
-Este projeto usa **Terraform** para criar automaticamente uma máquina virtual **Windows Server 2022** no **Proxmox VE**, clonada de um template já existente (`Template-WinServer2022`), e promovê-la a **Controlador de Domínio (Active Directory)** — tudo sozinho, sem precisar entrar no console da VM e digitar comandos manualmente.
+This project uses **Terraform** to automatically create a **Windows Server 2022** virtual machine on **Proxmox VE**, cloned from an existing template (`Template-WinServer2022`), and promote it to a **Domain Controller (Active Directory)** — all by itself, with no need to open the VM console and type commands manually.
 
-Este guia foi escrito para quem **nunca configurou isso antes**. Siga os passos na ordem, do início ao fim.
-
----
-
-## Índice
-
-1. [Como funciona](#1-como-funciona)
-2. [Pré-requisitos](#2-pré-requisitos)
-3. [Passo a passo no Proxmox](#3-passo-a-passo-no-proxmox)
-   - 3.1 [Instalar o Cloudbase-Init no template (OBRIGATÓRIO)](#31-instalar-o-cloudbase-init-no-template-obrigatório)
-   - 3.2 [Criar o usuário e o API Token](#32-criar-o-usuário-e-o-api-token)
-   - 3.3 [Entendendo as permissões (Roles/ACL) do token](#33-entendendo-as-permissões-rolesacl-do-token)
-   - 3.4 [Habilitar "Snippets" no Storage](#34-habilitar-snippets-no-storage)
-4. [Criar a chave SSH (no seu computador)](#4-criar-a-chave-ssh-no-seu-computador)
-5. [Configurar o arquivo `terraform.tfvars`](#5-configurar-o-arquivo-terraformtfvars)
-6. [Explicação de cada arquivo `.tf` (passo a passo do código)](#6-explicação-de-cada-arquivo-tf-passo-a-passo-do-código)
-7. [Rodando o Terraform](#7-rodando-o-terraform)
-8. [Verificando o resultado](#8-verificando-o-resultado)
-9. [Destruindo tudo](#9-destruindo-tudo)
-10. [Problemas comuns (Troubleshooting)](#10-problemas-comuns-troubleshooting)
-11. [Segurança](#11-segurança)
+This guide is written for people who have **never configured this before**. Follow the steps in order, from start to finish.
 
 ---
 
-## 1. Como funciona
+## Table of Contents
+
+1. [How it works](#1-how-it-works)
+2. [Prerequisites](#2-prerequisites)
+3. [Step-by-step on Proxmox](#3-step-by-step-on-proxmox)
+   - 3.1 [Install Cloudbase-Init on the template (MANDATORY)](#31-install-cloudbase-init-on-the-template-mandatory)
+   - 3.2 [Create the user and the API Token](#32-create-the-user-and-the-api-token)
+   - 3.3 [Understanding token permissions (Roles/ACL)](#33-understanding-token-permissions-rolesacl)
+   - 3.4 [Enable "Snippets" on the storage](#34-enable-snippets-on-the-storage)
+4. [Create the SSH key (on your computer)](#4-create-the-ssh-key-on-your-computer)
+5. [Configure the `terraform.tfvars` file](#5-configure-the-terraformtfvars-file)
+6. [Explanation of each `.tf` file (code walkthrough)](#6-explanation-of-each-tf-file-code-walkthrough)
+7. [Running Terraform](#7-running-terraform)
+8. [Checking the result](#8-checking-the-result)
+9. [Destroying everything](#9-destroying-everything)
+10. [Common issues (Troubleshooting)](#10-common-issues-troubleshooting)
+11. [Security](#11-security)
+
+---
+
+## 1. How it works
 
 ```mermaid
 flowchart LR
-    A[terraform apply] --> B[Terraform conecta na API do Proxmox]
-    B --> C[Clona o Template-WinServer2022]
-    C --> D[Envia o script de instalação via SSH - Snippets]
-    D --> E[VM liga e o cloudbase-init executa o script sozinho]
-    E --> F[Windows vira Controlador de Domínio AD]
+    A[terraform apply] --> B[Terraform connects to the Proxmox API]
+    B --> C[Clones Template-WinServer2022]
+    C --> D[Uploads the install script via SSH - Snippets]
+    D --> E[VM boots and cloudbase-init runs the script by itself]
+    E --> F[Windows becomes an AD Domain Controller]
 ```
 
-- O Terraform fala com o Proxmox por **dois canais diferentes**:
-  - **API (HTTPS)**: cria a VM, configura CPU, memória, rede, etc. Usa o **API Token**.
-  - **SSH**: usado **só** para enviar (upload) o script de instalação do AD para dentro do Proxmox (chamado de *snippet*), porque o Proxmox não tem uma forma de fazer isso pela API. Usa a **chave SSH**.
-- Quando a VM liga pela primeira vez, um programa chamado **cloudbase-init** (já instalado no template) lê esse script e executa automaticamente, sem precisar de WinRM, RDP ou qualquer intervenção manual.
+- Terraform talks to Proxmox through **two different channels**:
+  - **API (HTTPS)**: creates the VM, configures CPU, memory, network, etc. Uses the **API Token**.
+  - **SSH**: used **only** to upload the AD installation script into Proxmox (called a *snippet*), because Proxmox has no API endpoint to do this. Uses the **SSH key**.
+- The first time the VM boots, a program called **cloudbase-init** (already installed on the template) reads that script and runs it automatically — no WinRM, RDP, or manual intervention needed.
 
 ---
 
-## 2. Pré-requisitos
+## 2. Prerequisites
 
-| Requisito | Onde conseguir |
+| Requirement | Where to get it |
 |---|---|
-| Terraform instalado no Windows | `winget install HashiCorp.Terraform` |
-| Acesso administrativo ao Proxmox VE | Interface web do Proxmox (`https://<ip-do-proxmox>:8006`) |
-| Template `Template-WinServer2022` já criado no Proxmox | Deve conter o **cloudbase-init** instalado (veja seção 3.1 — **sem isso, nada funciona**) |
-| Cliente OpenSSH no Windows (para gerar chaves e testar SSH) | Já vem instalado no Windows 10/11 (`ssh`, `ssh-keygen`) |
+| Terraform installed on Windows | `winget install HashiCorp.Terraform` |
+| Administrative access to Proxmox VE | Proxmox web UI (`https://<proxmox-ip>:8006`) |
+| `Template-WinServer2022` template already created on Proxmox | Must have **cloudbase-init** installed (see section 3.1 — **without it, nothing works**) |
+| OpenSSH client on Windows (to generate keys and test SSH) | Already bundled with Windows 10/11 (`ssh`, `ssh-keygen`) |
 
 ---
 
-## 3. Passo a passo no Proxmox
+## 3. Step-by-step on Proxmox
 
-### 3.1 Instalar o Cloudbase-Init no template (OBRIGATÓRIO)
+### 3.1 Install Cloudbase-Init on the template (MANDATORY)
 
-> ⚠️ **Este passo é obrigatório.** Sem o Cloudbase-Init instalado e configurado no template, a VM é criada normalmente, mas **nada do resto funciona**: a senha não é trocada, o IP estático não é aplicado e o script que instala o Active Directory nunca é executado. O Windows liga, mas fica "parado" esperando uma configuração que nunca chega.
+> ⚠️ **This step is mandatory.** Without Cloudbase-Init installed and configured on the template, the VM is created normally, but **nothing else works**: the password is never changed, the static IP is never applied, and the script that installs Active Directory never runs. Windows boots but stays "stuck" waiting for a configuration that never arrives.
 >
-> Como confirmar se falta: dentro de uma VM já criada, veja se a pasta `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\` existe. Se não existir, siga os passos abaixo.
+> How to check if it's missing: inside an already-created VM, check whether `C:\Program Files\Cloudbase Solutions\Cloudbase-Init\` exists. If it doesn't, follow the steps below.
 
-Para não correr risco de quebrar o template `Template-WinServer2022` que já está em uso, faça isso em um **clone temporário** — o original não é alterado.
+To avoid the risk of breaking the `Template-WinServer2022` template that's already in use, do this on a **temporary clone** — the original stays untouched.
 
-**1. Clonar o template para uma VM temporária** (via SSH no Proxmox, ou pela interface web: botão direito no template → Clone → Full Clone):
+**1. Clone the template into a temporary VM** (via SSH on Proxmox, or through the web UI: right-click the template → Clone → Full Clone):
 ```bash
 qm clone 999 9000 --name temp-ws2022-cloudbaseinit-v2 --full
 qm start 9000
 ```
 
-**2. Acessar o console da VM temporária**
-Na interface web do Proxmox: clique na VM `9000` → **Console**. Faça login com o usuário/senha administrativo atual do template.
+**2. Open the temporary VM's console**
+In the Proxmox web UI: click VM `9000` → **Console**. Log in with the template's current administrative user/password.
 
-**3. Baixar o instalador oficial do Cloudbase-Init** (dentro da VM, versão estável 64 bits):
+**3. Download the official Cloudbase-Init installer** (inside the VM, stable 64-bit version):
 ```
 https://www.cloudbase.it/downloads/CloudbaseInitSetup_Stable_x64.msi
 ```
-> Se a VM não tiver acesso à internet, baixe no seu computador e copie o arquivo para dentro da VM (ex: anexando como CD-ROM em Storage → Upload, renomeando para `.iso`, ou por uma pasta de rede compartilhada).
+> If the VM has no internet access, download it on your computer and copy it into the VM (e.g. attach it as a CD-ROM via Storage → Upload, renaming it to `.iso`, or through a shared network folder).
 
-**4. Rodar o instalador (assistente gráfico)**
-Dê duplo clique no `.msi` baixado e siga o assistente:
-- Pode deixar as opções padrão de configuração.
-- Marque para o serviço rodar como **Local System**.
-- **Não marque ainda "Run Sysprep and Shutdown" nesta tela** — antes disso, é preciso corrigir o `Unattend.xml` (passo 4.1 abaixo), senão toda VM clonada vai travar pedindo senha do Administrator na primeira inicialização.
+**4. Run the installer (graphical wizard)**
+Double-click the downloaded `.msi` and follow the wizard:
+- Default configuration options are fine.
+- Set the service to run as **Local System**.
+- **Do not check "Run Sysprep and Shutdown" on this screen yet** — before doing that, you need to fix the `Unattend.xml` (step 4.1 below), otherwise every cloned VM will get stuck asking for the Administrator password on first boot.
 
-#### 4.1 Corrigir o `Unattend.xml` (evita tela de senha do Administrator)
+#### 4.1 Fix `Unattend.xml` (avoids the Administrator password screen)
 
-> ⚠️ **Problema comum:** o `Unattend.xml` padrão do Cloudbase-Init não define uma senha para a conta Administrator. Como o Windows não aceita senha em branco (política de complexidade), toda VM clonada do template trava no primeiro boot numa tela interativa pedindo para "criar uma senha" — quebrando a automação completa.
+> ⚠️ **Common problem:** Cloudbase-Init's default `Unattend.xml` does not set a password for the Administrator account. Since Windows won't accept a blank password (complexity policy), every VM cloned from the template gets stuck on first boot at an interactive screen asking to "create a password" — breaking full automation.
 
-Abra o arquivo abaixo com um editor de texto (Bloco de Notas) dentro da VM temporária:
+Open the file below with a text editor (Notepad) inside the temporary VM:
 ```
 C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml
 ```
 
-Dentro de `<settings pass="oobeSystem"> → <component name="Microsoft-Windows-Shell-Setup">`, adicione os blocos `<UserAccounts>` e `<AutoLogon>` logo depois do `</OOBE>`. Um exemplo pronto para copiar está incluído neste repositório em [`Unattend-corrigido.xml`](Unattend-corrigido.xml):
+Inside `<settings pass="oobeSystem"> → <component name="Microsoft-Windows-Shell-Setup">`, add the `<UserAccounts>` and `<AutoLogon>` blocks right after `</OOBE>`. A ready-to-copy example is included in this repository at [`Unattend-corrigido.xml`](Unattend-corrigido.xml):
 
 ```xml
 <settings pass="oobeSystem">
@@ -142,175 +142,175 @@ Dentro de `<settings pass="oobeSystem"> → <component name="Microsoft-Windows-S
 </settings>
 ```
 
-> Essa senha `TempP@ss123` é apenas temporária/interna do template — o próprio script de provisionamento (`guest_script` em `ad_vars.tf`) troca a senha do Administrator automaticamente assim que o Cloudbase-Init roda o `user_data` na VM final. Não é necessário (nem recomendado) usar uma senha "real" aqui.
+> That `TempP@ss123` password is just a temporary/internal placeholder for the template — the provisioning script itself (`guest_script` in `ad_vars.tf`) automatically changes the Administrator password once Cloudbase-Init runs `user_data` on the final VM. There's no need (and it's not recommended) to use a "real" password here.
 
-**5. Rodar o Sysprep manualmente**, apontando para o `Unattend.xml` já corrigido (abra um `cmd`/PowerShell **como Administrador** dentro da VM temporária):
+**5. Run Sysprep manually**, pointing to the already-fixed `Unattend.xml` (open `cmd`/PowerShell **as Administrator** inside the temporary VM):
 ```powershell
 C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:"C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"
 ```
-- `/generalize` — remove informações específicas da máquina (SID, drivers), permitindo reutilizar a imagem.
-- `/oobe` — na próxima inicialização, passa pela fase `oobeSystem` (onde o `UserAccounts`/`AutoLogon` corrigidos entram em ação).
-- `/shutdown` — desliga a VM sozinha ao terminar (sinal de sucesso).
-- `/unattend:"..."` — força o uso do arquivo corrigido.
-- Não interrompa o processo — pode levar alguns minutos e a VM reinicia sozinha antes de desligar de vez.
-- Se aparecer erro de "número máximo de sysprep atingido" (limite de ~3 generalizações do Windows), é preciso clonar novamente a partir de uma imagem "fresca" (não generalizada).
+- `/generalize` — removes machine-specific information (SID, drivers), allowing the image to be reused.
+- `/oobe` — on next boot, goes through the `oobeSystem` pass (where the fixed `UserAccounts`/`AutoLogon` kick in).
+- `/shutdown` — shuts the VM down by itself when finished (success signal).
+- `/unattend:"..."` — forces the use of the fixed file.
+- Don't interrupt the process — it can take a few minutes, and the VM reboots on its own before shutting down for good.
+- If you get a "sysprep limit reached" error (Windows allows ~3 generalizations), you need to clone again from a "fresh" (non-generalized) image.
 
-**6. Converter a VM em um novo template**, quando o status estiver **Stopped**:
+**6. Convert the VM into a new template**, once its status is **Stopped**:
 ```bash
 qm template 9000
 ```
 
-**7. Apontar o Terraform para o novo template**, no `terraform.tfvars`:
+**7. Point Terraform to the new template**, in `terraform.tfvars`:
 ```hcl
 template_name = "temp-ws2022-cloudbaseinit-v2"
 ```
 
-> Depois desse processo, todo novo clone feito a partir desse template já nasce com o Cloudbase-Init generalizado (e sem a tela de senha travando o boot), pronto para executar o `user_data` automaticamente no primeiro boot — que é exatamente o que o `ad.tf` deste projeto espera.
+> After this process, every new clone made from this template is already generalized with Cloudbase-Init (and without the password screen blocking the boot), ready to automatically run the `user_data` on first boot — which is exactly what this project's `ad.tf` expects.
 
-### 3.2 Criar o usuário e o API Token
+### 3.2 Create the user and the API Token
 
-O Terraform precisa de credenciais para conversar com a API do Proxmox **sem** usar login/senha interativo. É para isso que existe o **API Token**: uma chave de acesso vinculada a um usuário, que pode ser revogada a qualquer momento sem trocar a senha da conta.
+Terraform needs credentials to talk to the Proxmox API **without** using interactive login/password. That's what the **API Token** is for: an access key tied to a user, which can be revoked at any time without changing the account's password.
 
-#### Opção A — Simples (usada por padrão neste projeto)
+#### Option A — Simple (used by default in this project)
 
-Ideal para laboratório/homelab, onde você mesmo é o único administrador.
+Ideal for a lab/homelab, where you're the only administrator.
 
-1. Acesse a interface web do Proxmox: `https://<ip-do-proxmox>:8006`
-2. Vá em **Datacenter** → **Permissions** → **API Tokens**
-3. Clique em **Add**
-4. Preencha:
-   - **User**: `root@pam` (o superusuário do Proxmox — já tem acesso total a tudo)
-   - **Token ID**: `terraform` (qualquer nome que te ajude a identificar depois)
-   - ⚠️ **Desmarque a opção "Privilege Separation"** — explicado em detalhes na seção 3.3 abaixo. Se deixar marcada, o Terraform não consegue configurar alguns recursos de hardware da VM (erro comum: `only root can set 'usb0' config for real devices`).
-5. Clique em **Add** e **copie o "Secret" imediatamente** — ele só aparece uma vez! Se perder, é preciso apagar o token e criar outro.
-6. O token final tem este formato, que você vai usar depois no `terraform.tfvars`:
+1. Open the Proxmox web UI: `https://<proxmox-ip>:8006`
+2. Go to **Datacenter** → **Permissions** → **API Tokens**
+3. Click **Add**
+4. Fill in:
+   - **User**: `root@pam` (Proxmox's superuser — already has full access to everything)
+   - **Token ID**: `terraform` (any name that helps you identify it later)
+   - ⚠️ **Uncheck "Privilege Separation"** — explained in detail in section 3.3 below. If left checked, Terraform can't configure some VM hardware resources (common error: `only root can set 'usb0' config for real devices`).
+5. Click **Add** and **copy the "Secret" immediately** — it's only shown once! If you lose it, you'll need to delete the token and create a new one.
+6. The final token looks like this, and you'll use it later in `terraform.tfvars`:
    ```
    root@pam!terraform=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
    ```
-   - Antes do `!` → usuário (`root@pam`)
-   - Entre `!` e `=` → nome do token (`terraform`)
-   - Depois do `=` → o "Secret" (segredo), equivalente a uma senha
+   - Before the `!` → the user (`root@pam`)
+   - Between `!` and `=` → the token name (`terraform`)
+   - After the `=` → the "Secret", equivalent to a password
 
-#### Opção B — Recomendada para produção (usuário dedicado + permissões mínimas)
+#### Option B — Recommended for production (dedicated user + minimal permissions)
 
-Em vez de usar `root@pam` (que tem acesso irrestrito a **tudo** no cluster), crie um usuário só para o Terraform e dê a ele **apenas** as permissões necessárias. Assim, se o token vazar algum dia, o estrago é limitado.
+Instead of using `root@pam` (which has unrestricted access to **everything** in the cluster), create a user just for Terraform and grant it **only** the permissions it needs. That way, if the token ever leaks, the damage is limited.
 
-1. **Datacenter → Permissions → Users → Add**: crie `terraform@pve` com uma senha qualquer (ela não será usada, só o token).
-2. **Datacenter → Permissions → Roles → Create**: crie uma role chamada `TerraformProvisioner` com estes privilégios:
+1. **Datacenter → Permissions → Users → Add**: create `terraform@pve` with any password (it won't actually be used, only the token).
+2. **Datacenter → Permissions → Roles → Create**: create a role called `TerraformProvisioner` with these privileges:
    `VM.Allocate`, `VM.Clone`, `VM.Config.CDROM`, `VM.Config.CPU`, `VM.Config.Disk`, `VM.Config.Memory`, `VM.Config.Network`, `VM.Config.Options`, `VM.Monitor`, `VM.Audit`, `VM.PowerMgmt`, `Datastore.AllocateSpace`, `Datastore.AllocateTemplate`, `Datastore.Audit`, `Sys.Audit`, `Sys.Modify`, `Pool.Allocate`
-3. **Datacenter → Permissions → Add → User Permission**: vincule `terraform@pve` (ou `terraform@pve!terraform`, se marcou Privilege Separation) ao path `/` (todo o cluster, ou restrinja a um pool/nó específico) com a role `TerraformProvisioner`.
-4. **Datacenter → Permissions → API Tokens → Add**: crie o token para `terraform@pve` (mantendo Privilege Separation **marcada**, já que agora o usuário tem só o necessário).
+3. **Datacenter → Permissions → Add → User Permission**: link `terraform@pve` (or `terraform@pve!terraform`, if Privilege Separation is checked) to the path `/` (the whole cluster, or restrict it to a specific pool/node) with the `TerraformProvisioner` role.
+4. **Datacenter → Permissions → API Tokens → Add**: create the token for `terraform@pve` (keeping Privilege Separation **checked**, since the user now only has what's necessary).
 
-### 3.3 Entendendo as permissões (Roles/ACL) do token
+### 3.3 Understanding token permissions (Roles/ACL)
 
-Este é o ponto que mais confunde iniciantes, então vamos com calma:
+This is the point that confuses beginners the most, so let's go slowly:
 
-- No Proxmox, permissões funcionam em três camadas: **Usuário** → **Role** (conjunto de privilégios) → **ACL** (o vínculo entre usuário + role + "caminho" de recursos, tipo `/` ou `/vms/100`).
-- Um **API Token** normalmente **herda** as permissões do usuário dono dele — **a menos que** a opção **"Privilege Separation"** esteja marcada.
-- **Privilege Separation marcada** = o token passa a ter suas **próprias** permissões, separadas do usuário — você precisa criar uma ACL específica para `usuario@realm!tokenid` (e não só para `usuario@realm`). É mais seguro, mas dá mais trabalho.
-- **Privilege Separation desmarcada** = o token **copia** as permissões do usuário automaticamente. Mais simples, mas se o token vazar, o atacante tem exatamente o que o usuário tem.
-- Por isso, com `root@pam` (Opção A), a recomendação é **desmarcar** Privilege Separation, já que o objetivo é simplicidade em ambiente de laboratório — o próprio `root` já tem tudo liberado de qualquer forma.
-- Com um usuário dedicado com permissões mínimas (Opção B), faz sentido **manter marcada**, criando a ACL explicitamente para o token — reforçando o princípio de menor privilégio.
+- In Proxmox, permissions work in three layers: **User** → **Role** (set of privileges) → **ACL** (the link between user + role + resource "path", like `/` or `/vms/100`).
+- An **API Token** normally **inherits** the permissions of the user who owns it — **unless** the **"Privilege Separation"** option is checked.
+- **Privilege Separation checked** = the token gets its **own** permissions, separate from the user — you need to create a specific ACL for `user@realm!tokenid` (not just for `user@realm`). More secure, but more work.
+- **Privilege Separation unchecked** = the token **automatically copies** the user's permissions. Simpler, but if the token leaks, the attacker gets exactly what the user has.
+- That's why, with `root@pam` (Option A), the recommendation is to **uncheck** Privilege Separation, since the goal is simplicity in a lab environment — `root` already has everything unlocked anyway.
+- With a dedicated user with minimal permissions (Option B), it makes sense to **keep it checked**, explicitly creating the ACL for the token — reinforcing the principle of least privilege.
 
-### 3.4 Habilitar "Snippets" no Storage
+### 3.4 Enable "Snippets" on the storage
 
-Por padrão, o Proxmox **não permite** o upload de scripts (snippets) em nenhum storage. Precisamos habilitar isso manualmente, **uma única vez**:
+By default, Proxmox **does not allow** uploading scripts (snippets) to any storage. We need to enable this manually, **just once**:
 
-1. Vá em **Datacenter** → **Storage**
-2. Clique no storage que você usa (geralmente chamado **local**) → **Edit**
-3. No campo **Content**, marque a opção **Snippets**
-4. Clique em **OK**
+1. Go to **Datacenter** → **Storage**
+2. Click the storage you use (usually called **local**) → **Edit**
+3. In the **Content** field, check the **Snippets** option
+4. Click **OK**
 
-Se você usa um storage diferente de `local`, anote o nome dele — você vai precisar informar no `terraform.tfvars` (variável `snippets_datastore_id`).
+If you use a storage other than `local`, note its name — you'll need to provide it in `terraform.tfvars` (the `snippets_datastore_id` variable).
 
 ---
 
-## 4. Criar a chave SSH (no seu computador)
+## 4. Create the SSH key (on your computer)
 
-O SSH é necessário só para o Terraform conseguir enviar o script de instalação do AD para o Proxmox. Em vez de usar senha toda vez, criamos uma **chave** — é mais seguro e não trava o `apply` pedindo senha no meio do processo.
+SSH is only needed so Terraform can upload the AD installation script to Proxmox. Instead of using a password every time, we create a **key** — it's more secure and doesn't make `apply` stop midway asking for a password.
 
-Abra o **PowerShell** e rode, um comando de cada vez:
+Open **PowerShell** and run these one at a time:
 
-**1. Gerar o par de chaves** (privada + pública):
+**1. Generate the key pair** (private + public):
 ```powershell
 ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\proxmox_terraform" -N '""'
 ```
-> Isso cria dois arquivos em `C:\Users\SEU_USUARIO\.ssh\`:
-> - `proxmox_terraform` → chave **privada** (nunca compartilhe/versione este arquivo)
-> - `proxmox_terraform.pub` → chave **pública** (esta pode ser compartilhada)
+> This creates two files in `C:\Users\YOUR_USER\.ssh\`:
+> - `proxmox_terraform` → **private** key (never share/commit this file)
+> - `proxmox_terraform.pub` → **public** key (this one can be shared)
 
-**2. Copiar a chave pública para o Proxmox**, autorizando o acesso:
+**2. Copy the public key to Proxmox**, authorizing access:
 ```powershell
 type "$env:USERPROFILE\.ssh\proxmox_terraform.pub" | ssh root@192.168.200.107 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
-> Troque `192.168.200.107` pelo IP real do seu Proxmox. Esse comando vai pedir a senha do `root` do Proxmox **uma última vez** — depois disso não pede mais.
+> Replace `192.168.200.107` with your Proxmox's actual IP. This command will ask for the Proxmox `root` password **one last time** — after that it won't ask again.
 
-**3. Testar se funcionou** (não deve pedir senha):
+**3. Test if it worked** (should not ask for a password):
 ```powershell
 ssh -i "$env:USERPROFILE\.ssh\proxmox_terraform" root@192.168.200.107 "echo ok"
 ```
-Se aparecer `ok`, está tudo certo. Se pedir senha, revise o passo 2.
+If `ok` shows up, everything is fine. If it asks for a password, review step 2.
 
 ---
 
-## 5. Configurar o arquivo `terraform.tfvars`
+## 5. Configure the `terraform.tfvars` file
 
-Este é o **único arquivo que você precisa editar** com os seus dados reais. Ele nunca é enviado ao Git (está no `.gitignore`), pois contém senhas e tokens.
+This is the **only file you need to edit** with your real data. It's never committed to Git (it's in `.gitignore`), since it contains passwords and tokens.
 
-1. Copie o arquivo de exemplo:
+1. Copy the example file:
    ```powershell
    Copy-Item terraform.tfvars.example terraform.tfvars
    ```
-2. Abra `terraform.tfvars` e preencha cada campo:
+2. Open `terraform.tfvars` and fill in each field:
 
 ```hcl
-# --- Conexão com o Proxmox ---
-proxmox_endpoint  = "https://192.168.200.107:8006/"   # IP/URL do seu Proxmox
-proxmox_api_token = "root@pam!terraform=xxxx..."       # Token criado no passo 3.2
-proxmox_insecure  = true                                # true = ignora certificado autoassinado
+# --- Connection to Proxmox ---
+proxmox_endpoint  = "https://192.168.200.107:8006/"   # Your Proxmox IP/URL
+proxmox_api_token = "root@pam!terraform=xxxx..."       # Token created in step 3.2
+proxmox_insecure  = true                                # true = ignore self-signed certificate
 
 # --- VM ---
-target_node   = "proxmox"                # Nome do node no Proxmox (aparece no menu à esquerda)
-template_name = "Template-WinServer2022" # Nome exato do template
-vm_id         = 5010                     # ID numérico livre para a nova VM
-vm_name       = "ad-dc01"                # Nome da VM
+target_node   = "proxmox"                # Node name in Proxmox (shown in the left menu)
+template_name = "Template-WinServer2022" # Exact template name
+vm_id         = 5010                     # Free numeric ID for the new VM
+vm_name       = "ad-dc01"                # VM name
 
-# --- Rede ---
-bridge_network    = "vmbr0"              # Bridge de rede do Proxmox
-bridge_cidr_range = "192.168.200.0/24"   # Rede onde a VM vai receber IP fixo
-ad_network_host   = 10                   # Último número do IP (aqui = .10)
+# --- Network ---
+bridge_network    = "vmbr0"              # Proxmox network bridge
+bridge_cidr_range = "192.168.200.0/24"   # Network where the VM will get a static IP
+ad_network_host   = 10                   # Last IP octet (here = .10)
 
-# --- SSH (necessário só para enviar o script via Snippets) ---
+# --- SSH (only needed to upload the script via Snippets) ---
 ssh_username         = "root"
 ssh_agent            = false
-ssh_private_key_path = "C:/Users/SEU_USUARIO/.ssh/proxmox_terraform"   # chave criada no passo 4
+ssh_private_key_path = "C:/Users/YOUR_USER/.ssh/proxmox_terraform"   # key created in step 4
 
-# --- Domínio do Active Directory (ficam no ad_vars.tf, veja seção 6) ---
+# --- Active Directory domain (live in ad_vars.tf, see section 6) ---
 domain_name                      = "aromaforhealth.corp"
 dc_name                          = "ntdc01"
 domain_netbios_name              = "aromaforhealth"
 vm_admin_username                = "Administrator"
-domain_admin_password            = "SuaSenhaForte123@"
-safe_mode_administrator_password = "SuaSenhaForte123@"
+domain_admin_password            = "YourStrongPassword123@"
+safe_mode_administrator_password = "YourStrongPassword123@"
 ```
 
-> ⚠️ Use `vm_admin_username = "Administrator"` para que o Terraform **redefina a senha da conta Administrator já existente** no template, em vez de criar um usuário novo.
+> ⚠️ Use `vm_admin_username = "Administrator"` so Terraform **resets the password of the already existing Administrator account**, instead of creating a new user.
 
 ---
 
-## 6. Explicação de cada arquivo `.tf` (passo a passo do código)
+## 6. Explanation of each `.tf` file (code walkthrough)
 
-| Arquivo | O que faz |
+| File | What it does |
 |---|---|
-| **`provider.tf`** | Diz ao Terraform como se conectar ao Proxmox: endereço (`endpoint`), token de API e as credenciais SSH (usadas só para o upload do script de snippets). |
-| **`variables.tf`** | Declaração de todas as variáveis de conexão, rede e SSH — são os "campos em branco" que você preenche no `terraform.tfvars`. |
-| **`ad_vars.tf`** | Variáveis específicas do domínio (nome do domínio, senhas, NetBIOS) e o script PowerShell que promove o Windows a Controlador de Domínio. Esse script é montado dentro do bloco `locals` e vira o conteúdo executado no primeiro boot da VM. |
-| **`ad.tf`** | O "coração" do projeto: procura o template pelo nome, envia o script como *snippet* para o Proxmox, e cria a VM (clone do template) já apontando para esse script via `user_data_file_id`. |
-| **`outputs.tf`** | Mostra, depois do `apply`, o nome, ID e IP da VM criada. |
-| **`terraform.tfvars`** | Seus valores reais (senhas, IP, token). **Nunca comitar no Git.** |
-| **`terraform.tfvars.example`** | Modelo/exemplo do `terraform.tfvars`, sem dados reais — serve de referência. |
+| **`provider.tf`** | Tells Terraform how to connect to Proxmox: address (`endpoint`), API token, and SSH credentials (used only for uploading the snippet script). |
+| **`variables.tf`** | Declares all connection, network, and SSH variables — the "blank fields" you fill in `terraform.tfvars`. |
+| **`ad_vars.tf`** | Domain-specific variables (domain name, passwords, NetBIOS) and the PowerShell script that promotes Windows to a Domain Controller. This script is assembled inside a `locals` block and becomes the content run on the VM's first boot. |
+| **`ad.tf`** | The project's "heart": looks up the template by name, uploads the script as a *snippet* to Proxmox, and creates the VM (cloned from the template) already pointing to that script via `user_data_file_id`. |
+| **`outputs.tf`** | Shows, after `apply`, the name, ID, and IP of the created VM. |
+| **`terraform.tfvars`** | Your real values (passwords, IP, token). **Never commit to Git.** |
+| **`terraform.tfvars.example`** | Template/example of `terraform.tfvars`, with no real data — used as a reference. |
 
-### 6.1 `provider.tf` — como o Terraform se conecta ao Proxmox
+### 6.1 `provider.tf` — how Terraform connects to Proxmox
 
 ```hcl
 terraform {
@@ -340,38 +340,38 @@ provider "proxmox" {
 }
 ```
 
-Linha por linha, em português simples:
+Line by line, in plain English:
 
-- `required_providers`: diz ao Terraform quais "plugins" baixar. `bpg/proxmox` é o provider (o "tradutor" entre o código Terraform e a API do Proxmox). `hashicorp/local` só é usado para salvar uma cópia do script gerado em disco (fins de depuração).
-- `provider "proxmox" { ... }`: aqui configuramos a conexão em si.
-  - `endpoint`: a URL da API do Proxmox (ex: `https://192.168.200.107:8006/`).
-  - `api_token`: o token criado na seção 3.2 — é usado para **toda** a criação/gerenciamento da VM via API.
-  - `insecure`: quando `true`, ignora a validação do certificado TLS (necessário porque o Proxmox usa certificado autoassinado por padrão).
-  - Bloco `ssh { }`: usado **só** para enviar o script de instalação (snippet), já que a API do Proxmox não tem endpoint para isso. Você pode autenticar de 3 formas (escolha uma, deixando as outras vazias/`false`):
-    - `agent = true` → usa o ssh-agent do Windows (chave já carregada em memória).
-    - `private_key` → aponta para o arquivo de chave privada (o que fizemos no passo 4). A função `file(...)` lê o conteúdo do arquivo em disco.
-    - `password` → senha SSH direta (menos recomendado, evite em produção).
+- `required_providers`: tells Terraform which "plugins" to download. `bpg/proxmox` is the provider (the "translator" between Terraform code and the Proxmox API). `hashicorp/local` is only used to save a copy of the generated script to disk (for debugging).
+- `provider "proxmox" { ... }`: this is where the actual connection is configured.
+  - `endpoint`: the Proxmox API URL (e.g. `https://192.168.200.107:8006/`).
+  - `api_token`: the token created in section 3.2 — used for **all** VM creation/management via the API.
+  - `insecure`: when `true`, skips TLS certificate validation (needed because Proxmox uses a self-signed certificate by default).
+  - `ssh { }` block: used **only** to upload the installation script (snippet), since the Proxmox API has no endpoint for that. You can authenticate in 3 ways (pick one, leaving the others empty/`false`):
+    - `agent = true` → uses the Windows ssh-agent (key already loaded in memory).
+    - `private_key` → points to the private key file (what we did in step 4). The `file(...)` function reads the file's content from disk.
+    - `password` → direct SSH password (less recommended, avoid it in production).
 
-### 6.2 `variables.tf` — os "campos em branco" do projeto
+### 6.2 `variables.tf` — the project's "blank fields"
 
-Cada bloco `variable "nome" { ... }` declara uma variável de entrada. Exemplo:
+Each `variable "name" { ... }` block declares an input variable. Example:
 
 ```hcl
 variable "proxmox_api_token" {
   type        = string
-  description = "API Token do Proxmox no formato user@realm!tokenid=uuid"
+  description = "Proxmox API Token in the format user@realm!tokenid=uuid"
   sensitive   = true
 }
 ```
 
-- `type = string`: o Terraform valida que só aceita texto nesse campo (evita erro de digitação, tipo passar número onde deveria ser texto).
-- `description`: aparece quando você roda `terraform plan` sem preencher a variável — o Terraform pergunta e mostra essa descrição de ajuda.
-- `sensitive = true`: instrui o Terraform a **esconder o valor nos logs e no output do plan/apply** — importante para tokens e senhas, para não aparecerem "no claro" no terminal ou em CI/CD.
-- Variáveis com `default = "..."` são opcionais (se você não definir no `terraform.tfvars`, usa o valor padrão). Variáveis **sem** `default` são obrigatórias.
+- `type = string`: Terraform validates that only text is accepted for this field (avoids typo errors, like passing a number where text is expected).
+- `description`: shown when you run `terraform plan` without filling in the variable — Terraform prompts for it and displays this help text.
+- `sensitive = true`: tells Terraform to **hide the value in logs and in plan/apply output** — important for tokens and passwords, so they don't show up "in the clear" in the terminal or in CI/CD.
+- Variables with `default = "..."` are optional (if you don't set them in `terraform.tfvars`, the default value is used). Variables **without** a `default` are required.
 
-### 6.3 `ad_vars.tf` — o "cérebro" do provisionamento do Active Directory
+### 6.3 `ad_vars.tf` — the "brain" of the Active Directory provisioning
 
-Esse arquivo tem duas partes: as variáveis do domínio (nomes, senhas) e um bloco `locals` que monta o **script PowerShell** que vai rodar dentro da VM Windows no primeiro boot.
+This file has two parts: the domain variables (names, passwords) and a `locals` block that assembles the **PowerShell script** that runs inside the Windows VM on first boot.
 
 ```hcl
 locals {
@@ -384,12 +384,12 @@ locals {
 }
 ```
 
-- `cmd01`/`cmd02`: instalam as **roles do Windows** necessárias — `AD-Domain-Services` (Active Directory Domain Services) e `DNS` (obrigatório para um domínio funcionar corretamente).
-- `cmd03`: carrega os módulos PowerShell que serão usados no próximo comando.
-- `cmd04`: o comando que efetivamente **cria a floresta/domínio** (`Install-ADDSForest`). Repare que `${var.domain_name}` é **interpolação** — o Terraform substitui pelo valor real que você definiu no `terraform.tfvars` antes de gravar o script.
-- As aspas simples (`'${var.domain_name}'`) dentro do PowerShell servem para o valor funcionar mesmo se tiver caracteres especiais como `&`, `%` ou espaços (comum em senhas).
+- `cmd01`/`cmd02`: install the required **Windows roles** — `AD-Domain-Services` (Active Directory Domain Services) and `DNS` (mandatory for a domain to work correctly).
+- `cmd03`: loads the PowerShell modules used in the next command.
+- `cmd04`: the command that actually **creates the forest/domain** (`Install-ADDSForest`). Notice that `${var.domain_name}` is **interpolation** — Terraform substitutes it with the real value you set in `terraform.tfvars` before writing the script.
+- The single quotes (`'${var.domain_name}'`) inside PowerShell make the value work even if it contains special characters like `&`, `%`, or spaces (common in passwords).
 
-Depois, o bloco `guest_script` monta o script **completo** que a VM vai executar:
+Then, the `guest_script` block assembles the **complete** script that the VM will run:
 
 ```hcl
 guest_script = <<-EOT
@@ -409,15 +409,15 @@ guest_script = <<-EOT
 EOT
 ```
 
-Passo a passo do que esse script faz, na ordem:
+Step by step, in order:
 
-1. `net user ... "senha"` — redefine a senha da conta Administrator (ou do usuário informado) com a senha real que você definiu — a VM sai do template com uma senha só temporária (lembra do `TempP@ss123`?).
-2. `net user Admin /delete` — remove uma conta extra chamada "Admin" que o Cloudbase-Init cria por padrão com senha aleatória (não é usada por este projeto, então é removida por segurança).
-3. `Get-NetAdapter ...` — descobre qual placa de rede está ativa (importante porque o nome pode variar entre VMs).
-4. `New-NetIPAddress` / `Set-DnsClientServerAddress` — configura um **IP fixo** (usando a função `cidrhost()` do Terraform para calcular o IP a partir do CIDR + host) e aponta o DNS da própria VM para si mesma (`127.0.0.1`, necessário depois que ela virar DC) e para o gateway como fallback.
-5. `cmd01`/`cmd02`/`cmd03`/`cmd04` — instala as roles do AD/DNS e, por fim, promove o servidor a Controlador de Domínio.
+1. `net user ... "password"` — resets the Administrator account's password (or the given user) with the real password you set — the VM comes out of the template with only a temporary password (remember `TempP@ss123`?).
+2. `net user Admin /delete` — removes an extra account called "Admin" that Cloudbase-Init creates by default with a random password (not used by this project, so it's removed for security).
+3. `Get-NetAdapter ...` — figures out which network adapter is active (important because the name can vary between VMs).
+4. `New-NetIPAddress` / `Set-DnsClientServerAddress` — configures a **static IP** (using Terraform's `cidrhost()` function to compute the IP from the CIDR + host) and points the VM's DNS to itself (`127.0.0.1`, needed once it becomes a DC) and to the gateway as a fallback.
+5. `cmd01`/`cmd02`/`cmd03`/`cmd04` — installs the AD/DNS roles and finally promotes the server to a Domain Controller.
 
-Por fim:
+Finally:
 
 ```hcl
 cloudbase_userdata = <<-EOT
@@ -426,9 +426,9 @@ cloudbase_userdata = <<-EOT
 EOT
 ```
 
-- A primeira linha `#ps1_sysnative` é uma "assinatura mágica" que o Cloudbase-Init reconhece: ela diz "execute este arquivo como um script PowerShell (64 bits)". Sem essa linha, o Cloudbase-Init ignora o arquivo.
+- The first line, `#ps1_sysnative`, is a "magic signature" that Cloudbase-Init recognizes: it says "run this file as a PowerShell (64-bit) script." Without this line, Cloudbase-Init ignores the file.
 
-### 6.4 `ad.tf` — onde a VM realmente é criada
+### 6.4 `ad.tf` — where the VM is actually created
 
 ```hcl
 data "proxmox_virtual_environment_vms" "ad_template" {
@@ -442,7 +442,7 @@ data "proxmox_virtual_environment_vms" "ad_template" {
   }
 }
 ```
-- Um bloco `data` **não cria nada** — ele só **consulta** o Proxmox para descobrir o ID interno do template pelo nome (`var.template_name`), garantindo que estamos clonando o template certo mesmo que o ID numérico mude.
+- A `data` block **doesn't create anything** — it only **queries** Proxmox to find the template's internal ID by name (`var.template_name`), ensuring we're cloning the right template even if the numeric ID changes.
 
 ```hcl
 resource "proxmox_virtual_environment_file" "ad_userdata" {
@@ -456,7 +456,7 @@ resource "proxmox_virtual_environment_file" "ad_userdata" {
   }
 }
 ```
-- Esse `resource` **envia o script montado na seção 6.3 para o Proxmox**, como um arquivo do tipo "snippet" (é por isso que precisamos habilitar Snippets no storage — seção 3.4 — e ter SSH configurado, já que é assim que o provider faz esse upload internamente).
+- This `resource` **uploads the script assembled in section 6.3 to Proxmox**, as a "snippet" file (that's why we need to enable Snippets on the storage — section 3.4 — and have SSH configured, since that's how the provider performs this upload internally).
 
 ```hcl
 resource "proxmox_virtual_environment_vm" "ad" {
@@ -497,12 +497,12 @@ resource "proxmox_virtual_environment_vm" "ad" {
   }
 }
 ```
-- `clone { vm_id = ..., full = true }`: clona o template encontrado pelo `data` acima. `full = true` significa **Full Clone** (cópia completa e independente do disco, em vez de um Linked Clone que depende do template original continuar existindo).
-- `cpu` / `memory` / `network_device`: hardware da VM — todos vêm de variáveis, então dá pra ajustar sem tocar no código.
-- `initialization.user_data_file_id`: aqui está a "mágica" — em vez de configurar usuário/senha manualmente (`user_account`, abordagem antiga baseada em cloud-init genérico), apontamos para o **ID do snippet** que acabamos de enviar. É esse campo que faz o Cloudbase-Init, no primeiro boot, ler e executar o script da seção 6.3 sozinho.
-- `ip_config.ipv4`: configura o IP fixo diretamente pela integração do Proxmox com o cloudbase-init (complementado pelo próprio script, que também define IP/DNS via PowerShell, por redundância).
+- `clone { vm_id = ..., full = true }`: clones the template found by the `data` block above. `full = true` means **Full Clone** (a complete, independent disk copy, instead of a Linked Clone that depends on the original template continuing to exist).
+- `cpu` / `memory` / `network_device`: the VM's hardware — all come from variables, so you can adjust it without touching the code.
+- `initialization.user_data_file_id`: this is where the "magic" happens — instead of manually configuring a user/password (`user_account`, the old approach based on generic cloud-init), we point to the **snippet ID** we just uploaded. This field is what makes Cloudbase-Init, on first boot, read and run the script from section 6.3 by itself.
+- `ip_config.ipv4`: configures the static IP directly through Proxmox's integration with cloudbase-init (complemented by the script itself, which also sets IP/DNS via PowerShell, for redundancy).
 
-### 6.5 `outputs.tf` — o que aparece na tela no final
+### 6.5 `outputs.tf` — what's shown on screen at the end
 
 ```hcl
 output "ad_vm_name" {
@@ -515,95 +515,95 @@ output "ad_ip_address" {
   value = cidrhost(var.bridge_cidr_range, var.ad_network_host)
 }
 ```
-- Cada `output` expõe um valor no terminal depois do `terraform apply`, para você confirmar rapidamente o nome, ID e IP da VM criada sem precisar abrir a interface do Proxmox.
+- Each `output` exposes a value in the terminal after `terraform apply`, so you can quickly confirm the name, ID, and IP of the created VM without having to open the Proxmox UI.
 
 ---
 
-## 7. Rodando o Terraform
+## 7. Running Terraform
 
-Abra o PowerShell na pasta do projeto:
+Open PowerShell in the project folder:
 
 ```powershell
 cd "D:\Terraform Proxmox\AD"
 ```
 
-**1. Inicializar** (baixa os providers do Proxmox/local — só precisa rodar uma vez ou quando mudar de versão):
+**1. Initialize** (downloads the Proxmox/local providers — only needs to run once, or when you change versions):
 ```powershell
 terraform init
 ```
 
-**2. Ver o que será criado** (não altera nada, é só uma prévia):
+**2. See what will be created** (doesn't change anything, just a preview):
 ```powershell
 terraform plan
 ```
 
-**3. Aplicar de verdade** (cria a VM e o AD):
+**3. Apply for real** (creates the VM and the AD):
 ```powershell
 terraform apply -auto-approve
 ```
 
-Aguarde alguns minutos — a VM precisa ligar, o cloudbase-init executa o script, o Windows instala os papéis de AD/DNS e reinicia sozinho para virar Controlador de Domínio.
+Wait a few minutes — the VM needs to boot, cloudbase-init runs the script, Windows installs the AD/DNS roles, and it reboots by itself to become a Domain Controller.
 
 ---
 
-## 8. Verificando o resultado
+## 8. Checking the result
 
-Depois do `apply` terminar sem erros, o Terraform mostra os outputs:
+Once `apply` finishes without errors, Terraform shows the outputs:
 ```
 ad_vm_name    = "ad-dc01"
 ad_vm_id      = 5010
 ad_ip_address = "192.168.200.10"
 ```
 
-Para confirmar que o AD subiu:
-1. Acesse o console da VM pela interface web do Proxmox, **ou**
-2. Espere alguns minutos após o boot e teste via PowerShell (rede):
+To confirm the AD is up:
+1. Open the VM's console via the Proxmox web UI, **or**
+2. Wait a few minutes after boot and test over the network via PowerShell:
    ```powershell
-   Test-NetConnection -ComputerName 192.168.200.10 -Port 389   # porta do LDAP
+   Test-NetConnection -ComputerName 192.168.200.10 -Port 389   # LDAP port
    ```
-3. Login na VM: usuário `Administrator`, senha definida em `domain_admin_password` no seu `terraform.tfvars`.
+3. Log in to the VM: user `Administrator`, password set in `domain_admin_password` in your `terraform.tfvars`.
 
 ---
 
-## 9. Destruindo tudo
+## 9. Destroying everything
 
-Se quiser apagar a VM e recomeçar do zero:
+If you want to remove the VM and start over:
 ```powershell
 terraform destroy -auto-approve
 ```
 
 ---
 
-## 10. Problemas comuns (Troubleshooting)
+## 10. Common issues (Troubleshooting)
 
-| Erro | Causa | Solução |
+| Error | Cause | Fix |
 |---|---|---|
-| `only root can set 'usb0' config for real devices` | O token de API está com "Privilege Separation" habilitado | Recrie o token desmarcando essa opção (seção 3.2) |
-| `the datastore 'local' does not support content type 'snippets'` | Snippets não habilitado no storage | Habilite em Datacenter → Storage → Content (seção 3.4) |
-| A senha não muda, o IP estático não é aplicado e o AD nunca é instalado | O template não tem o Cloudbase-Init instalado | Siga a seção 3.1 (obrigatório) para instalar o Cloudbase-Init e gerar um novo template |
-| A VM trava no console pedindo para "criar uma senha" do Administrator logo no primeiro boot | O `Unattend.xml` do Cloudbase-Init não define senha para a conta Administrator (senha em branco não é aceita pelo Windows) | Siga a seção 3.1 (item 4.1) para adicionar `<UserAccounts>`/`<AutoLogon>` no `Unattend.xml` e rodar o Sysprep novamente |
-| Existe uma conta local extra chamada "Admin" com senha desconhecida | O `CreateUserPlugin` do Cloudbase-Init cria essa conta por padrão, independente do `user_data` | Pode ser ignorada (não é usada por este projeto) ou removida manualmente com `net user Admin /delete` |
-| `failed to open SSH client: unable to authenticate` | Chave SSH não autorizada no Proxmox, ou caminho errado no `ssh_private_key_path` | Repita a seção 4 e confirme o caminho no `terraform.tfvars` |
-| A senha do Windows não bate após criar a VM | `vm_admin_username` não é exatamente `Administrator` | Use `vm_admin_username = "Administrator"` para redefinir a conta já existente |
-| `terraform apply` trava por vários minutos e falha por timeout de conexão | Resquício de uma versão antiga usando WinRM | Este projeto já não usa WinRM — confirme que está usando a versão atual do `ad.tf` (com `user_data_file_id`) |
-| Permissão negada mesmo com o token criado (Opção B) | ACL não foi vinculada ao token (`usuario@realm!tokenid`), e não apenas ao usuário | Revise a seção 3.3 — com Privilege Separation marcada, a ACL precisa ser dada explicitamente ao token |
+| `only root can set 'usb0' config for real devices` | The API token has "Privilege Separation" enabled | Recreate the token with this option unchecked (section 3.2) |
+| `the datastore 'local' does not support content type 'snippets'` | Snippets not enabled on the storage | Enable it under Datacenter → Storage → Content (section 3.4) |
+| The password never changes, the static IP is never applied, and AD is never installed | The template doesn't have Cloudbase-Init installed | Follow section 3.1 (mandatory) to install Cloudbase-Init and generate a new template |
+| The VM gets stuck on the console asking to "create a password" for Administrator on first boot | Cloudbase-Init's `Unattend.xml` doesn't set a password for the Administrator account (blank passwords are rejected by Windows) | Follow section 3.1 (item 4.1) to add `<UserAccounts>`/`<AutoLogon>` to `Unattend.xml` and run Sysprep again |
+| There's an extra local account called "Admin" with an unknown password | Cloudbase-Init's `CreateUserPlugin` creates this account by default, regardless of `user_data` | Can be ignored (not used by this project) or manually removed with `net user Admin /delete` |
+| `failed to open SSH client: unable to authenticate` | SSH key not authorized on Proxmox, or wrong path in `ssh_private_key_path` | Repeat section 4 and confirm the path in `terraform.tfvars` |
+| The Windows password doesn't match after creating the VM | `vm_admin_username` isn't exactly `Administrator` | Use `vm_admin_username = "Administrator"` to reset the existing account |
+| `terraform apply` hangs for several minutes and fails with a connection timeout | Leftover from an old version using WinRM | This project no longer uses WinRM — confirm you're using the current `ad.tf` version (with `user_data_file_id`) |
+| Permission denied even with the token created (Option B) | The ACL wasn't linked to the token (`user@realm!tokenid`), only to the user | Review section 3.3 — with Privilege Separation checked, the ACL must be explicitly granted to the token |
 
 ---
 
-## 11. Segurança
+## 11. Security
 
-- **Nunca** commite `terraform.tfvars`, `.env`, `terraform.tfstate` ou a chave privada SSH (`proxmox_terraform`) em repositórios Git — todos já estão no `.gitignore`.
-- O `terraform.tfstate` guarda dados sensíveis (inclusive senhas) em texto simples — trate-o como um segredo.
-- Prefira `private_key` (chave SSH) a `password` sempre que possível.
-- Troque as senhas padrão de exemplo (`domain_admin_password`, `safe_mode_administrator_password`) por senhas fortes antes de usar em produção.
-- Em ambientes compartilhados/produção, prefira a **Opção B** da seção 3.2 (usuário dedicado + permissões mínimas) em vez de usar o token de `root@pam`.
+- **Never** commit `terraform.tfvars`, `.env`, `terraform.tfstate`, or the SSH private key (`proxmox_terraform`) to Git repositories — they're all already in `.gitignore`.
+- `terraform.tfstate` stores sensitive data (including passwords) in plain text — treat it as a secret.
+- Prefer `private_key` (SSH key) over `password` whenever possible.
+- Replace the example default passwords (`domain_admin_password`, `safe_mode_administrator_password`) with strong passwords before using this in production.
+- In shared/production environments, prefer **Option B** from section 3.2 (dedicated user + minimal permissions) instead of using the `root@pam` token.
 
 ---
 
 <div align="center">
 
-**Autor:** Marcelo Goncalves
+**Author:** Marcelo Goncalves
 
-[🇧🇷 Português](README.md) &nbsp;|&nbsp; [🇺🇸 English](README.en.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
+[�🇸 English](README.md) &nbsp;|&nbsp; [🇧🇷 Português](README.pt.md) &nbsp;|&nbsp; [🇪🇸 Español](README.es.md)
 
 </div>
